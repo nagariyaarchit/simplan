@@ -328,33 +328,6 @@ def test_example_file_end_to_end():
     plan, shortfall = solve(occurrences, available)
     blocks, unplaced = place_blocks(plan, occurrences, busy)
 
-    print("\n========== DEBUG INFO ==========")
-    print("Total required hours:", sum(o.hours for o in occurrences))
-    print("Total available hours:", sum(available.values()))
-    print("Total planned hours:", sum(plan.values()))
-    print("Shortfall:", shortfall)
-
-    for k, hours in shortfall.items():
-        o = occurrences[k]
-        last = last_study_day(o)
-
-        eligible_days = {
-            day: capacity
-            for day, capacity in available.items()
-            if last - timedelta(days=14) <= day <= last
-        }
-
-        print(f"\nProblem occurrence: {o.name}")
-        print("Type:", o.kind)
-        print("Due:", o.due)
-        print("Required:", o.hours)
-        print("Priority:", o.priority)
-        print("Last study day:", last)
-        print("Uncompleted hours:", hours)
-        print("Available capacity in its window:", sum(eligible_days.values()))
-
-    print("================================\n")
-
     assert shortfall == {}
     assert unplaced == []
     assert_no_overlaps(blocks)

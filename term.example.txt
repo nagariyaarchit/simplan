@@ -2,3 +2,6 @@
 assignment, CO 250 A3, 23:59, hours=6, priority=3, every=mon, from=2027-01-11, to=2027-04-05, except=2027-02-15|2027-03-01
 quiz, MATH 235 Quiz, 10:30, hours=2, priority=2, every=fri, from=2027-01-15, to=2027-03-26
 midterm, CS 245 Midterm, 14:00, hours=15, priority=5, on=2027-02-25
+# Weekly study availability
+free, days=mon|tue|wed|thu|fri, hours=3
+free, days=sat|sun, hours=5
