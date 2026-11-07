@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧭 Pivot
+# 🧭 Simplan
 
 **An LP-based term planner that decides what to study when, then puts it on your Google Calendar.**
 
@@ -94,15 +94,15 @@ In words: spread the work so that the **weighted amount of unfinished work is as
 > Commands below describe the intended interface and will be filled in as each piece is built.
 
 ```bash
-git clone https://github.com/nagariyaarchit/pivot.git
-cd pivot
+git clone https://github.com/nagariyaarchit/simplan.git
+cd simplan
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-pivot auth                  # one-time Google OAuth
-pivot parse term.yaml       # validate your term file
-pivot solve term.yaml       # print the day-by-day plan
-pivot push term.yaml        # write events to Google Calendar
+simplan auth                  # one-time Google OAuth
+simplan parse term.yaml       # validate your term file
+simplan solve term.yaml       # print the day-by-day plan
+simplan push term.yaml        # write events to Google Calendar
 ```
 
 ---
@@ -110,8 +110,8 @@ pivot push term.yaml        # write events to Google Calendar
 ## Project structure
 
 ```text
-pivot/
-├── pivot/
+simplan/
+├── simplan/
 │   ├── parser.py      # mini-language -> task objects
 │   ├── solver.py      # tasks + availability -> hours per day per task
 │   ├── gcal.py        # OAuth + create/update events
