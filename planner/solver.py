@@ -35,89 +35,141 @@ class Block:
 # ---------- step 1: the linear program ----------
 
 def last_study_day(occurrence):
-    """Return the last date you can work on an Occurrence.
-
-    Assignments can be worked on until the day they are due. Quizzes, midterms
-    and finals happen at a fixed time, so their last study day is the day before.
-    """
-    day = occurrence.due.date()
-    if occurrence.kind == Kind.ASSIGNMENT:
-        return day
-    return day - timedelta(days=1)
+    """Last calendar date on which studying is allowed."""
+    return occurrence.due.date()
 
 
-def solve(occurrences, hours_available, days_ahead=14):
-    """Decide how many hours to work on each Occurrence each day.
 
-    occurrences: list of Occurrence.
-    hours_available: dict {date: hours free that day}. Only these days are used.
-    days_ahead: work on an Occurrence may start this many days before its last study day.
+def solve(occurrences, hours_available, days_ahead=14, busy=None):
+    """Allocate study hours while respecting daily capacity and deadlines."""
 
-    Returns (plan, shortfall):
-        plan: dict {(date, occurrence index): hours}
-        shortfall: dict {occurrence index: hours that did not fit}, only if above 0
-
-    Raises RuntimeError if the solver does not return an optimal plan.
-    """
     if not occurrences:
         return {}, {}
 
+    busy = busy or []
     days = sorted(hours_available)
-    first_day = min(days, default=None)
+
+    if not days:
+        return {}, {k: occ.hours for k, occ in enumerate(occurrences)}
+
+    first_day = days[0]
 
     problem = pulp.LpProblem("study_plan", pulp.LpMinimize)
 
-    # short[k]: hours of Occurrence k left undone.
-    # x[k, day]: hours spent on Occurrence k on that day, only on days when work is allowed.
     short = {}
     x = {}
-    by_occurrence = {}  # k -> its x variables
-    by_day = {}  # day -> all x variables on that day
+    by_occurrence = {}
+    by_day = {}
+
+    # STEP 1: Create the decision variables.
     for k, occ in enumerate(occurrences):
-        short[k] = pulp.LpVariable(f"short_{k}", lowBound=0)
+        short[k] = pulp.LpVariable(
+            f"short_{k}", lowBound=0
+        )
+
         by_occurrence[k] = []
+
         last = last_study_day(occ)
         first = last - timedelta(days=days_ahead)
+
         for day in days:
             if first <= day <= last:
-                var = pulp.LpVariable(f"x_{k}_{day:%Y%m%d}", lowBound=0)
+                var = pulp.LpVariable(
+                    f"x_{k}_{day:%Y%m%d}",
+                    lowBound=0
+                )
+
                 x[k, day] = var
                 by_occurrence[k].append(var)
                 by_day.setdefault(day, []).append(var)
 
-    # Objective: leave as little (priority-weighted) work undone as possible,
-    # and among equal plans prefer working earlier.
-    shortfall_cost = pulp.lpSum(occ.priority * short[k] for k, occ in enumerate(occurrences))
-    lateness_cost = pulp.lpSum((day - first_day).days * var for (k, day), var in x.items())
+    # STEP 2: Objective function.
+    shortfall_cost = pulp.lpSum(
+        occ.priority * short[k]
+        for k, occ in enumerate(occurrences)
+    )
+
+    lateness_cost = pulp.lpSum(
+        (day - first_day).days * var
+        for (k, day), var in x.items()
+    )
+
     problem += shortfall_cost + TIE_BREAK * lateness_cost
 
-    # Every Occurrence's hours are either worked or counted as shortfall.
+    # STEP 3: Required hours for each occurrence.
     for k, occ in enumerate(occurrences):
-        problem += (pulp.lpSum(by_occurrence[k]) + short[k] == occ.hours, f"need_{k}")
+        problem += (
+            pulp.lpSum(by_occurrence[k]) + short[k] == occ.hours,
+            f"need_{k}"
+        )
 
-    # You cannot work more than the free hours of a day.
+    # STEP 4: Daily capacity constraints.
     for day, variables in by_day.items():
-        problem += (pulp.lpSum(variables) <= hours_available[day], f"capacity_{day:%Y%m%d}")
+        problem += (
+            pulp.lpSum(variables) <= hours_available[day],
+            f"capacity_{day:%Y%m%d}"
+        )
 
+    # STEP 5: Deadline-specific capacity constraints.
+    for day in days:
+        deadlines = sorted({
+            occ.due
+            for occ in occurrences
+            if occ.due.date() == day
+        })
+
+        for deadline in deadlines:
+            available_before = sum(
+                max(
+                    0,
+                    (
+                        min(slot_end, deadline) - slot_start
+                    ).total_seconds() / 3600
+                )
+                for slot_start, slot_end in free_slots(day, busy)
+                if slot_start < deadline
+            )
+
+            variables = [
+                var
+                for (k, d), var in x.items()
+                if d == day and occurrences[k].due <= deadline
+            ]
+
+            if variables:
+                problem += (
+                    pulp.lpSum(variables) <= available_before,
+                    f"deadline_{day:%Y%m%d}_{deadline:%H%M}"
+                )
+
+    # STEP 6: Solve.
     problem.solve(pulp.PULP_CBC_CMD(msg=False))
-    status = pulp.LpStatus[problem.status]
-    if status != "Optimal":
-        raise RuntimeError(f"The solver did not find a plan (status: {status})")
 
+    status = pulp.LpStatus[problem.status]
+
+    if status != "Optimal":
+        raise RuntimeError(
+            f"The solver did not find an optimal plan: {status}"
+        )
+
+    # STEP 7: Extract the results.
     plan = {}
+
     for (k, day), var in x.items():
         hours = var.value() or 0
+
         if hours > 1e-6:
             plan[(day, k)] = hours
 
     shortfall = {}
+
     for k, var in short.items():
         hours = var.value() or 0
+
         if hours > 1e-6:
             shortfall[k] = hours
 
     return plan, shortfall
-
 
 # ---------- step 2: fitting the plan around busy events ----------
 
@@ -199,8 +251,22 @@ def place_blocks(plan, occurrences, busy, day_start=DAY_START, day_end=DAY_END):
             remaining_slots = []
             for slot_start, slot_end in slots:
                 usable = min(slot_end, due) - slot_start
-                if need > timedelta(0) and usable >= min(MIN_BLOCK, need):
-                    take = min(need, usable)
+                if need > timedelta(0) and usable >= MIN_BLOCK and need >= MIN_BLOCK:
+                    take_minutes = min(
+                        int(need.total_seconds() // 60),
+                        int(usable.total_seconds() // 60)
+                    )
+
+                    take_minutes = (
+                        take_minutes // STEP_MINUTES
+                    ) * STEP_MINUTES
+
+                    take = timedelta(minutes=take_minutes)
+
+                    if take < MIN_BLOCK:
+                        remaining_slots.append((slot_start, slot_end))
+                        continue
+                    
                     blocks.append(
                         Block(
                             occurrences[k].name,

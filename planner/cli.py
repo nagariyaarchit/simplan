@@ -120,7 +120,8 @@ async def main():
         # 7. Run optimization.
         plan, shortfall = solve(
             occurrences,
-            hours_available
+            hours_available,
+            busy=busy
         )
 
         # 8. Place study sessions around busy events.
