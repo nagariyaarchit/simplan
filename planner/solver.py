@@ -26,11 +26,10 @@ TIE_BREAK = 0.001
 
 @dataclass
 class Block:
-    """One study session to put on the calendar."""
-
     name: str
     start: datetime
     end: datetime
+    occurrence_index: int | None = None
 
 
 # ---------- step 1: the linear program ----------
@@ -128,8 +127,15 @@ def free_slots(day, busy, day_start=DAY_START, day_end=DAY_END):
     busy: list of (start datetime, end datetime) for existing events, in any order.
     Returns a list of (start, end) datetimes, earliest first.
     """
+    window_start = datetime.combine(day, day_start)
     window_end = datetime.combine(day, day_end)
-    cursor = datetime.combine(day, day_start)
+
+    now = datetime.now()
+
+    if day == now.date():
+        window_start = max(window_start, now)
+
+    cursor = window_start
 
     slots = []
     for busy_start, busy_end in sorted(busy):
@@ -195,7 +201,14 @@ def place_blocks(plan, occurrences, busy, day_start=DAY_START, day_end=DAY_END):
                 usable = min(slot_end, due) - slot_start
                 if need > timedelta(0) and usable >= min(MIN_BLOCK, need):
                     take = min(need, usable)
-                    blocks.append(Block(occurrences[k].name, slot_start, slot_start + take))
+                    blocks.append(
+                        Block(
+                            occurrences[k].name,
+                            slot_start,
+                            slot_start + take,
+                            occurrence_index=k
+                        )
+                    )
                     need -= take
                     slot_start = slot_start + take
                 if slot_end > slot_start:

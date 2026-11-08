@@ -10,6 +10,10 @@ from datetime import date
 
 from planner.parser import load_term
 from planner.solver import cap_by_busy, last_study_day, place_blocks, solve
+import asyncio
+from datetime import date, datetime, time, timedelta
+
+from planner.gcal import CalendarError, get_busy_events
 
 
 def print_occurrences(occurrences):
@@ -24,49 +28,125 @@ def print_occurrences(occurrences):
 
 
 def print_plan(blocks, occurrences, shortfall, unplaced):
-    """Print the study blocks day by day, then anything that did not fit."""
+    """Print study blocks grouped by day, with their corresponding deadlines."""
+
     current_day = None
+
     for block in blocks:
         if block.start.date() != current_day:
             current_day = block.start.date()
             print(f"\n{current_day:%Y-%m-%d %a}")
+
+        occ = occurrences[block.occurrence_index]
         hours = (block.end - block.start).total_seconds() / 3600
-        print(f"  {block.start:%H:%M}-{block.end:%H:%M}  {block.name} ({hours:g}h)")
+
+        print(
+            f"  {block.start:%H:%M}-{block.end:%H:%M} "
+            f"{block.name} "
+            f"(due {occ.due:%b %d}, {hours:g}h)"
+        )
 
     for k, hours in shortfall.items():
         occ = occurrences[k]
-        print(f"\nNOT ENOUGH TIME: {occ.name} due {occ.due:%Y-%m-%d} is {hours:.1f}h short")
+        print(
+            f"\nNOT ENOUGH TIME: {occ.name} "
+            f"due {occ.due:%Y-%m-%d} is {hours:.1f}h short"
+        )
+
     for day, k, hours in unplaced:
-        print(f"\nNO ROOM IN THE DAY: {occurrences[k].name} on {day:%Y-%m-%d}, {hours:.2f}h")
+        occ = occurrences[k]
+        print(
+            f"\nNO ROOM IN THE DAY: {occ.name} "
+            f"due {occ.due:%Y-%m-%d} "
+            f"on {day:%Y-%m-%d}, {hours:.2f}h"
+        )
 
 
-def main():
-    """Load the term file, print its deadlines, then print the study plan."""
+
+async def main():
+    """Build a seven-day study plan using Google Calendar."""
+
     path = sys.argv[1] if len(sys.argv) > 1 else "term.example.txt"
-    start = date.fromisoformat(sys.argv[2]) if len(sys.argv) > 2 else date.today()
+    start = (
+        date.fromisoformat(sys.argv[2])
+        if len(sys.argv) > 2
+        else date.today()
+    )
 
     try:
+        # 1. Load study requirements from parser.
         occurrences, availability = load_term(path)
+
         print_occurrences(occurrences)
 
-        # skip deadlines that are already too close or past to plan for
-        occurrences = [occ for occ in occurrences if last_study_day(occ) >= start]
+        # 2. Remove expired deadlines.
+        occurrences = [
+            occ for occ in occurrences
+            if last_study_day(occ) >= start
+        ]
+
         if not occurrences:
             print("\nNothing left to plan.")
             return
 
-        busy = []  # existing events: will come from Google Calendar later
-        end = occurrences[-1].due.date()
-        hours_available = cap_by_busy(availability.hours_between(start, end), busy)
+        # 3. Define seven-day planning window.
+        end = start + timedelta(days=6)
 
-        plan, shortfall = solve(occurrences, hours_available)
-        blocks, unplaced = place_blocks(plan, occurrences, busy)
-    except (ValueError, FileNotFoundError, RuntimeError) as error:
+        query_start = datetime.combine(
+            start, time.min
+        ).astimezone()
+
+        query_end = datetime.combine(
+            end + timedelta(days=1), time.min
+        ).astimezone()
+
+        # 4. Fetch existing calendar commitments.
+        busy = await get_busy_events(
+            query_start, query_end
+        )
+
+        print(f"\nGoogle Calendar: {len(busy)} busy intervals")
+
+        # 5. Get study availability.
+        hours_available = availability.hours_between(
+            start, end
+        )
+
+        # 6. Subtract calendar commitments.
+        hours_available = cap_by_busy(
+            hours_available, busy
+        )
+
+        # 7. Run optimization.
+        plan, shortfall = solve(
+            occurrences,
+            hours_available
+        )
+
+        # 8. Place study sessions around busy events.
+        blocks, unplaced = place_blocks(
+            plan,
+            occurrences,
+            busy
+        )
+
+        print_plan(
+            blocks,
+            occurrences,
+            shortfall,
+            unplaced
+        )
+
+    except (
+        ValueError,
+        FileNotFoundError,
+        RuntimeError,
+        CalendarError,
+    ) as error:
         print(f"Error: {error}")
         sys.exit(1)
 
-    print_plan(blocks, occurrences, shortfall, unplaced)
-
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
+
