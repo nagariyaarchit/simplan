@@ -14,7 +14,7 @@ import asyncio
 from datetime import date, datetime, time, timedelta
 
 from planner.gcal import CalendarError, get_busy_events
-
+from planner.preview import show_preview
 
 def print_occurrences(occurrences):
     """Print the deadlines as a table, followed by the count and total hours."""
@@ -137,6 +137,11 @@ async def main():
             shortfall,
             unplaced
         )
+        # 9. Open the generated schedule in a read-only browser preview.
+        if blocks:
+            show_preview(blocks, occurrences)
+        else:
+            print("\nNo study blocks generated for preview.")
 
     except (
         ValueError,

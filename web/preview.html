@@ -1,0 +1,153 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimPlan | Schedule Preview</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.19/index.global.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      margin: 0;
+      padding: 32px;
+    }
+
+    .container {
+      max-width: 1150px;
+      margin: auto;
+    }
+
+    h1 {
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      color: #64748b;
+      margin-bottom: 24px;
+    }
+
+    .notice {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 14px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    #calendar {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+
+    #details {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+
+    .fc-event {
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>SimPlan</h1>
+    <p class="subtitle">Your optimized study schedule</p>
+
+    <div class="notice">
+      Preview mode — these events have not been added
+      to Google Calendar.
+    </div>
+
+    <div id="calendar"></div>
+
+    <div id="details">
+      <h3>Session details</h3>
+      <p>Click a study block to see its details.</p>
+    </div>
+  </div>
+
+  <script>
+    const events = __EVENT_DATA__;
+
+    document.addEventListener("DOMContentLoaded", function () {
+      const calendarElement = document.getElementById("calendar");
+      const detailsElement = document.getElementById("details");
+
+      const calendar = new FullCalendar.Calendar(calendarElement, {
+        initialView: "timeGridWeek",
+
+        initialDate: events.length
+          ? events[0].start.slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+
+        headerToolbar: {
+          left: "prev,next today",
+          center: "title",
+          right: "dayGridMonth,timeGridWeek,timeGridDay"
+        },
+
+        events: events,
+
+        editable: false,
+        selectable: false,
+        eventStartEditable: false,
+        eventDurationEditable: false,
+
+        allDaySlot: false,
+        slotMinTime: "09:00:00",
+        slotMaxTime: "22:00:00",
+        nowIndicator: true,
+        height: "auto",
+
+        eventClick: function(info) {
+          const event = info.event;
+          const props = event.extendedProps;
+
+          const formatDate = (value) =>
+            value.toLocaleString([], {
+              dateStyle: "medium",
+              timeStyle: "short"
+            });
+
+          // Use textContent rather than inserting event names as HTML.
+          detailsElement.replaceChildren();
+
+          const heading = document.createElement("h3");
+          heading.textContent = event.title;
+          detailsElement.appendChild(heading);
+
+          const lines = [
+            ["Start", formatDate(event.start)],
+            ["End", formatDate(event.end)],
+            ["Deadline", props.due
+              ? formatDate(new Date(props.due))
+              : "N/A"],
+            ["Priority", props.priority ?? "N/A"],
+            ["Type", props.kind ?? "N/A"]
+          ];
+
+          for (const [label, value] of lines) {
+            const paragraph = document.createElement("p");
+            paragraph.textContent = `${label}: ${value}`;
+            detailsElement.appendChild(paragraph);
+          }
+        }
+      });
+
+      calendar.render();
+    });
+  </script>
+</body>
+</html>
+
