@@ -12,9 +12,13 @@ from planner.parser import load_term
 from planner.solver import cap_by_busy, last_study_day, place_blocks, solve
 import asyncio
 from datetime import date, datetime, time, timedelta
-
-from planner.gcal import CalendarError, get_busy_events
+from planner.gcal import (
+    CalendarError,
+    get_events,
+    events_to_busy,
+)
 from planner.preview import show_preview
+
 
 def print_occurrences(occurrences):
     """Print the deadlines as a table, followed by the count and total hours."""
@@ -101,9 +105,11 @@ async def main():
         ).astimezone()
 
         # 4. Fetch existing calendar commitments.
-        busy = await get_busy_events(
+        google_events = await get_events(
             query_start, query_end
         )
+
+        busy = events_to_busy(google_events)
 
         print(f"\nGoogle Calendar: {len(busy)} busy intervals")
 
@@ -139,7 +145,7 @@ async def main():
         )
         # 9. Open the generated schedule in a read-only browser preview.
         if blocks:
-            show_preview(blocks, occurrences)
+            show_preview(blocks, occurrences, google_events)
         else:
             print("\nNo study blocks generated for preview.")
 

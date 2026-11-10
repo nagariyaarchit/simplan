@@ -1,153 +1,429 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SimPlan | Schedule Preview</title>
+
+  <title>SimPlan | Calendar Preview</title>
 
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.19/index.global.min.js"></script>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: system-ui, sans-serif;
+      font-family: system-ui, -apple-system, sans-serif;
       background: #f8fafc;
       color: #0f172a;
       margin: 0;
-      padding: 32px;
+      padding: 32px 20px;
     }
 
     .container {
-      max-width: 1150px;
-      margin: auto;
+      max-width: 1200px;
+      margin: 0 auto;
     }
 
     h1 {
-      margin-bottom: 4px;
+      margin: 0 0 6px;
+      font-size: 30px;
     }
 
     .subtitle {
       color: #64748b;
-      margin-bottom: 24px;
+      margin: 0 0 24px;
     }
 
     .notice {
       background: #eff6ff;
       border: 1px solid #bfdbfe;
-      padding: 14px;
-      border-radius: 8px;
+      border-radius: 10px;
+      padding: 14px 18px;
       margin-bottom: 20px;
+      color: #1e40af;
+      font-size: 14px;
     }
 
-    #calendar {
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+
+    .dot.google {
+      background: #64748b;
+    }
+
+    .dot.simplan {
+      background: #2563eb;
+    }
+
+    .calendar-card {
       background: white;
-      padding: 20px;
       border-radius: 12px;
+      padding: 20px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.06);
     }
 
-    #details {
-      background: white;
-      padding: 20px;
-      border-radius: 12px;
-      margin-top: 20px;
+    #calendar {
+      min-height: 500px;
     }
 
     .fc-event {
       cursor: pointer;
+    }
+
+    .fc .fc-toolbar-title {
+      font-size: 20px;
+    }
+
+    .fc .fc-button-primary {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+
+    .fc .fc-button-primary:hover {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+    }
+
+    .details-card {
+      background: white;
+      padding: 22px;
+      border-radius: 12px;
+      margin-top: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+
+    .details-card h3 {
+      margin-top: 0;
+    }
+
+    .details-card p {
+      margin: 10px 0;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .details-card .muted {
+      color: #64748b;
+    }
+
+    .source-label {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .source-label.google {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    .source-label.simplan {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 16px 10px;
+      }
+
+      .calendar-card {
+        padding: 10px;
+      }
+
+      .fc .fc-toolbar {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .fc .fc-toolbar-title {
+        font-size: 17px;
+      }
     }
   </style>
 </head>
 
 <body>
   <div class="container">
+
     <h1>SimPlan</h1>
-    <p class="subtitle">Your optimized study schedule</p>
+
+    <p class="subtitle">
+      Optimized Study Schedule | Calendar Preview
+    </p>
 
     <div class="notice">
-      Preview mode — these events have not been added
-      to Google Calendar.
+      <strong>Preview Mode</strong>
+      <p>
+        Your existing Google Calendar events and proposed
+        SimPlan study sessions are displayed together.
+        No new events have been added to Google Calendar.
+      </p>
     </div>
 
-    <div id="calendar"></div>
+    <div class="legend">
+      <div class="legend-item">
+        <span class="dot google"></span>
+        <span>Existing Google Calendar Events</span>
+      </div>
 
-    <div id="details">
-      <h3>Session details</h3>
-      <p>Click a study block to see its details.</p>
+      <div class="legend-item">
+        <span class="dot simplan"></span>
+        <span>Proposed SimPlan Study Sessions</span>
+      </div>
     </div>
+
+    <div class="calendar-card">
+      <div id="calendar"></div>
+    </div>
+
+    <div class="details-card" id="details">
+      <h3>Session Details</h3>
+      <p class="muted">
+        Click any calendar event to view its details.
+      </p>
+    </div>
+
   </div>
 
   <script>
+    // Replaced by planner/preview.py with JSON event data.
     const events = __EVENT_DATA__;
 
     document.addEventListener("DOMContentLoaded", function () {
-      const calendarElement = document.getElementById("calendar");
-      const detailsElement = document.getElementById("details");
 
-      const calendar = new FullCalendar.Calendar(calendarElement, {
-        initialView: "timeGridWeek",
+      const calendarElement =
+        document.getElementById("calendar");
 
-        initialDate: events.length
-          ? events[0].start.slice(0, 10)
-          : new Date().toISOString().slice(0, 10),
+      const detailsElement =
+        document.getElementById("details");
 
-        headerToolbar: {
-          left: "prev,next today",
-          center: "title",
-          right: "dayGridMonth,timeGridWeek,timeGridDay"
-        },
+      // Normalize event colours and source information.
+      const calendarEvents = events.map((event, index) => {
+        const source =
+          event.extendedProps?.source || "simplan";
 
-        events: events,
+        const isGoogle = source === "google";
 
-        editable: false,
-        selectable: false,
-        eventStartEditable: false,
-        eventDurationEditable: false,
+        return {
+          ...event,
 
-        allDaySlot: false,
-        slotMinTime: "09:00:00",
-        slotMaxTime: "22:00:00",
-        nowIndicator: true,
-        height: "auto",
+          id: event.id || `${source}-${index}`,
 
-        eventClick: function(info) {
-          const event = info.event;
-          const props = event.extendedProps;
+          backgroundColor: isGoogle
+            ? "#64748b"
+            : "#2563eb",
 
-          const formatDate = (value) =>
-            value.toLocaleString([], {
-              dateStyle: "medium",
-              timeStyle: "short"
-            });
+          borderColor: isGoogle
+            ? "#475569"
+            : "#1d4ed8",
 
-          // Use textContent rather than inserting event names as HTML.
-          detailsElement.replaceChildren();
+          textColor: "#ffffff",
 
-          const heading = document.createElement("h3");
-          heading.textContent = event.title;
-          detailsElement.appendChild(heading);
+          editable: false,
+          startEditable: false,
+          durationEditable: false
+        };
+      });
 
-          const lines = [
-            ["Start", formatDate(event.start)],
-            ["End", formatDate(event.end)],
-            ["Deadline", props.due
-              ? formatDate(new Date(props.due))
-              : "N/A"],
-            ["Priority", props.priority ?? "N/A"],
-            ["Type", props.kind ?? "N/A"]
-          ];
+      const firstEventDate = calendarEvents.length
+        ? calendarEvents
+            .map(event => event.start)
+            .sort()[0]
+            .slice(0, 10)
+        : new Date();
 
-          for (const [label, value] of lines) {
-            const paragraph = document.createElement("p");
-            paragraph.textContent = `${label}: ${value}`;
-            detailsElement.appendChild(paragraph);
+      const calendar = new FullCalendar.Calendar(
+        calendarElement,
+        {
+          initialView: "timeGridWeek",
+          initialDate: firstEventDate,
+
+          headerToolbar: {
+            left: "prev,next today",
+            center: "title",
+            right: "dayGridMonth,timeGridWeek,timeGridDay"
+          },
+
+          buttonText: {
+            today: "Today",
+            month: "Month",
+            week: "Week",
+            day: "Day"
+          },
+
+          events: calendarEvents,
+
+          // Strictly read-only.
+          editable: false,
+          selectable: false,
+          eventStartEditable: false,
+          eventDurationEditable: false,
+
+          // Display settings.
+          allDaySlot: true,
+          slotMinTime: "09:00:00",
+          slotMaxTime: "22:00:00",
+          slotDuration: "00:30:00",
+          nowIndicator: true,
+          height: "auto",
+
+          eventClick: function(info) {
+            const event = info.event;
+            const props = event.extendedProps || {};
+
+            const isGoogle = props.source === "google";
+
+            const formatDateTime = (value) => {
+              if (!value) return "N/A";
+
+              return value.toLocaleString([], {
+                dateStyle: "medium",
+                timeStyle: "short"
+              });
+            };
+
+            const formatDate = (value) => {
+              if (!value) return "N/A";
+
+              return value.toLocaleDateString([], {
+                dateStyle: "medium"
+              });
+            };
+
+            const formatEndDate = (value) => {
+              if (!value) return "N/A";
+
+              // FullCalendar uses exclusive end dates
+              // for all-day events.
+              const inclusiveEnd = new Date(value);
+              inclusiveEnd.setDate(inclusiveEnd.getDate() - 1);
+
+              return formatDate(inclusiveEnd);
+            };
+
+            // Clear the previous details safely.
+            detailsElement.replaceChildren();
+
+            const heading = document.createElement("h3");
+            heading.textContent = event.title;
+            detailsElement.appendChild(heading);
+
+            const sourceLabel = document.createElement("span");
+
+            sourceLabel.className =
+              `source-label ${isGoogle ? "google" : "simplan"}`;
+
+            sourceLabel.textContent = isGoogle
+              ? "Google Calendar"
+              : "SimPlan - Proposed";
+
+            detailsElement.appendChild(sourceLabel);
+
+            let lines;
+
+            if (isGoogle) {
+              lines = [
+                [
+                  "Start",
+                  event.allDay
+                    ? formatDate(event.start)
+                    : formatDateTime(event.start)
+                ],
+                [
+                  "End",
+                  event.allDay
+                    ? formatEndDate(event.end)
+                    : formatDateTime(event.end)
+                ],
+                [
+                  "All Day",
+                  event.allDay ? "Yes" : "No"
+                ],
+                [
+                  "Location",
+                  props.location || "N/A"
+                ],
+                [
+                  "Description",
+                  props.description || "N/A"
+                ]
+              ];
+            } else {
+              lines = [
+                [
+                  "Start",
+                  formatDateTime(event.start)
+                ],
+                [
+                  "End",
+                  formatDateTime(event.end)
+                ],
+                [
+                  "Deadline",
+                  props.due
+                    ? formatDateTime(new Date(props.due))
+                    : "N/A"
+                ],
+                [
+                  "Priority",
+                  props.priority ?? "N/A"
+                ],
+                [
+                  "Task Type",
+                  props.kind ?? "N/A"
+                ]
+              ];
+            }
+
+            for (const [label, value] of lines) {
+              const paragraph = document.createElement("p");
+
+              const labelElement =
+                document.createElement("strong");
+
+              labelElement.textContent = `${label}: `;
+
+              const valueElement =
+                document.createElement("span");
+
+              valueElement.textContent = String(value);
+
+              paragraph.appendChild(labelElement);
+              paragraph.appendChild(valueElement);
+
+              detailsElement.appendChild(paragraph);
+            }
           }
         }
-      });
+      );
 
       calendar.render();
     });
   </script>
+
 </body>
 </html>
-

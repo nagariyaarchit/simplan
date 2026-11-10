@@ -141,10 +141,13 @@ def _parse_event_time(value):
     raise ValueError("Event has no valid start/end time")
 
 
-async def get_busy_events(start, end):
-    """Return busy intervals suitable for the solver."""
 
+async def get_busy_events(start, end):
     events = await get_events(start, end)
+    return events_to_busy(events)
+
+def events_to_busy(events):
+    """Convert fetched Google Calendar events into busy intervals."""
     busy = set()
 
     for event in events:
@@ -167,7 +170,6 @@ async def get_busy_events(start, end):
             busy.add((event_start, event_end))
 
     return sorted(busy)
-
 
 if __name__ == "__main__":
 
