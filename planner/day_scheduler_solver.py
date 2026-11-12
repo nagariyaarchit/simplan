@@ -12,7 +12,7 @@ import math
 from planner.weeky_scheduler_solver import Block, DAY_START, DAY_END
 
 STEP = 15
-MIN_SESSION = 30
+MIN_SESSION = 15
 MAX_CONTINUOUS = 90
 REST = 15
 LECTURE_BUFFER = 15
@@ -125,19 +125,170 @@ def _free_until(start, day_end, busy):
             return min(end, b_start)
     return end
 
+def _future_capacity(
+    start,
+    deadline,
+    hours_available,
+    busy,
+    policy,
+    used_today=0,
+):
+    """
+    Estimate remaining study minutes between start and deadline.
 
-def _choose_task(candidates, remaining, occurrences, now, horizon_end, step):
-    """Heuristic: protect scarce opportunities, then use stated user priority."""
+    Accounts for:
+    - calendar commitments and lecture buffers
+    - daily study budgets
+    - study window boundaries
+    - deadline times
+    - study time already used today
+
+    This remains an optimistic estimate because breaks
+    and competing tasks are not fully modeled here.
+    """
+    if deadline <= start:
+        return 0
+
+    total = 0
+    current_day = start.date()
+    day = current_day
+
+    while day <= deadline.date():
+        if day not in hours_available:
+            day += timedelta(days=1)
+            continue
+
+        window_start = datetime.combine(
+            day, policy.day_start
+        )
+
+        if day == current_day:
+            window_start = max(window_start, start)
+
+        window_end = min(
+            datetime.combine(day, policy.day_end),
+            deadline,
+        )
+
+        if window_start >= window_end:
+            day += timedelta(days=1)
+            continue
+
+        free_minutes = 0
+        cursor = window_start
+
+        for busy_start, busy_end in busy:
+            if busy_end <= cursor:
+                continue
+
+            if busy_start >= window_end:
+                break
+
+            if busy_start > cursor:
+                free_minutes += (
+                    busy_start - cursor
+                ).total_seconds() / 60
+
+            cursor = max(cursor, busy_end)
+
+            if cursor >= window_end:
+                break
+
+        if cursor < window_end:
+            free_minutes += (
+                window_end - cursor
+            ).total_seconds() / 60
+
+        daily_budget = hours_available[day] * 60
+
+        if day == current_day:
+            daily_budget -= used_today
+
+        total += max(
+            0,
+            min(free_minutes, daily_budget),
+        )
+
+        day += timedelta(days=1)
+
+    return total
+
+def _choose_task(
+    candidates,
+    remaining,
+    occurrences,
+    now,
+    hours_available,
+    busy,
+    policy,
+    used_today=0,
+):
+    """
+    Choose a task using shared-deadline lookahead.
+
+    Considers cumulative unfinished work before each
+    deadline, rather than scoring tasks independently.
+    """
+
+    active = [
+        k for k, minutes in remaining.items()
+        if minutes > 0
+        and occurrences[k].due > now
+    ]
+
+    deadlines = sorted({
+        occurrences[k].due
+        for k in active
+    })
+
+    if not deadlines:
+        return min(
+            candidates,
+            key=lambda k: (occurrences[k].due, k),
+        )
+
+    pressure_by_deadline = {}
+
+    for deadline in deadlines:
+        demand = sum(
+            remaining[k]
+            for k in active
+            if occurrences[k].due <= deadline
+        )
+
+        capacity = _future_capacity(
+            start=now,
+            deadline=deadline,
+            hours_available=hours_available,
+            busy=busy,
+            policy=policy,
+            used_today=used_today,
+        )
+
+        pressure_by_deadline[deadline] = (
+            demand / capacity
+            if capacity > 0
+            else float("inf")
+        )
+
     def score(k):
-        occ = occurrences[k]
-        # Future nominal free time is unknown here; days-to-deadline is a
-        # proxy, not a proof of urgency or global optimality.
-        days_left = max(0, (occ.due.date() - now.date()).days)
-        urgency = 1.0 / (days_left + 1)
-        # Give same-day deadlines a large bonus, while preserving user priority.
-        same_day = 10 if days_left == 0 else 0
-        return (same_day + urgency * 5 + occ.priority * 2,
-                -occ.due.timestamp(), remaining[k], -k)
+        due = occurrences[k].due
+
+        # Consider every deadline window containing
+        # this task's deadline.
+        pressure = max(
+            pressure_by_deadline[d]
+            for d in deadlines
+            if d >= due
+        )
+
+        return (
+            pressure,
+            -due.timestamp(),
+            remaining[k],
+            -k,
+        )
+
     return max(candidates, key=score)
 
 
@@ -251,7 +402,16 @@ def schedule_week(plan, occurrences, hours_available, busy, google_events=None,
                 cursor += timedelta(minutes=policy.step_minutes)
                 continue
 
-            k = _choose_task(eligible, remaining, occurrences, cursor, end, policy.step_minutes)
+            k = _choose_task(
+                candidates=eligible,
+                remaining=remaining,
+                occurrences=occurrences,
+                now=cursor,
+                hours_available=hours_available,
+                busy=intervals,
+                policy=policy,
+                used_today=studied,
+            )
             duration = min(max_length, remaining[k],
                            _floor_minutes((occurrences[k].due - cursor).total_seconds() / 60, policy.step_minutes))
             if not policy.pull_forward:

@@ -6,12 +6,11 @@ Run from the project folder:
 """
 
 import sys
-from datetime import date
+import asyncio
 
 from planner.parser import load_term
-from planner.weeky_scheduler_solver import cap_by_busy, last_study_day, place_blocks, solve
+from planner.weeky_scheduler_solver import cap_by_busy, last_study_day, solve
 from planner.day_scheduler_solver import schedule_week
-import asyncio
 from datetime import date, datetime, time, timedelta
 from planner.gcal import (
     CalendarError,
@@ -22,14 +21,30 @@ from planner.preview import show_preview
 
 
 def print_occurrences(occurrences):
-    """Print the deadlines as a table, followed by the count and total hours."""
-    print(f"{'Due':<17} {'Kind':<11} {'Name':<18} {'Hours':>5} {'Priority':>8}")
+    """Print deadlines, task types, and required study hours."""
+    print(
+        f"{'Due':<17} "
+        f"{'Kind':<11} "
+        f"{'Name':<24} "
+        f"{'Hours':>5}"
+    )
+
     for occ in occurrences:
         due_text = occ.due.strftime("%Y-%m-%d %H:%M")
-        print(f"{due_text:<17} {occ.kind.value:<11} {occ.name:<18} {occ.hours:>5} {occ.priority:>8}")
+
+        print(
+            f"{due_text:<17} "
+            f"{occ.kind.value:<11} "
+            f"{occ.name:<24} "
+            f"{occ.hours:>5}"
+        )
 
     total_hours = sum(occ.hours for occ in occurrences)
-    print(f"\n{len(occurrences)} deadlines, {total_hours} hours of work in total")
+
+    print(
+        f"\n{len(occurrences)} deadlines, "
+        f"{total_hours:g} hours of work in total"
+    )
 
 
 def print_plan(blocks, occurrences, shortfall, unplaced):
@@ -140,11 +155,45 @@ async def main():
         )
         blocks = result.blocks
 
-        print_plan(blocks, occurrences, shortfall, [])
+        print_plan(blocks, occurrences, {}, [])
+
+        print("\n--- SCHEDULING SUMMARY ---")
+
+        total_required = sum(occ.hours for occ in occurrences)
+
+        total_scheduled = sum(
+            (block.end - block.start).total_seconds() / 3600
+            for block in blocks
+        )
+
+        total_shortfall = sum(shortfall.values())
+        total_unplaced = sum(result.unplaced.values())
+
+        print(f"Required study:  {total_required:.2f}h")
+        print(f"Scheduled study: {total_scheduled:.2f}h")
+
+        for k, hours in shortfall.items():
+            print(
+                f"NOT ALLOCATED: {occurrences[k].name}: "
+                f"{hours:.2f}h"
+            )
+
         for k, hours in result.missed.items():
-            print(f"MISSED DEADLINE: {occurrences[k].name}: {hours:.2f}h allocated but unscheduled")
+            print(
+                f"MISSED DEADLINE: {occurrences[k].name}: "
+                f"{hours:.2f}h"
+            )
+
         for k, hours in result.pending.items():
-            print(f"PENDING AFTER PLANNING WINDOW: {occurrences[k].name}: {hours:.2f}h")
+            print(
+                f"PENDING AFTER PLANNING WINDOW: "
+                f"{occurrences[k].name}: {hours:.2f}h"
+            )
+
+        print(
+            f"Total unscheduled: "
+            f"{total_shortfall + total_unplaced:.2f}h"
+        )
 
         # 9. Open the generated schedule in a read-only browser preview.
         if blocks:

@@ -3,9 +3,9 @@
 A task line is: kind, name, due time, then key=value options.
 
     assignment, CO 250 A3, 23:59, hours=6, every=mon, from=2027-01-11, to=2027-04-05, except=2027-02-15|2027-03-01
-    midterm, CS 245 Midterm, 14:00, hours=15, priority=5, on=2027-02-25
+    midterm, CS 245 Midterm, 14:00, hours=15, on=2027-02-25
 
-hours is required and priority defaults to 3. Use on= for a one-off date, or
+hours is required. Use on= for a one-off date, or
 every= with from= and to= for a weekly one.
 
 A free line says how many hours you can study:
@@ -47,7 +47,7 @@ WEEKDAYS = {
 }
 
 # The key=value options a task line may use, and the ones a free line may use.
-ALLOWED_KEYS = {"hours", "priority", "on", "every", "from", "to", "except"}
+ALLOWED_KEYS = {"hours", "on", "every", "from", "to", "except"}
 FREE_KEYS = {"hours", "days", "on", "from", "to"}
 
 
@@ -59,7 +59,6 @@ class Occurrence:
     kind: Kind
     due: datetime
     hours: float  # hours of work needed before the deadline
-    priority: int  # 1 (low) to 5 (high)
 
 
 @dataclass
@@ -98,20 +97,17 @@ class Task:
     name: str
     due_time: time
     hours: float  # hours of work needed per occurrence
-    priority: int = 3
     on_date: date = None
     recurrence: Recurrence = None
 
     def check(self):
-        """Raise ValueError if the date/recurrence, hours or priority are invalid."""
+        """Raise ValueError if the date/recurrence, hours"""
         if self.on_date is None and self.recurrence is None:
             raise ValueError("Give either a single date or a recurrence")
         if self.on_date is not None and self.recurrence is not None:
             raise ValueError("Give a single date or a recurrence, not both")
         if self.hours <= 0:
             raise ValueError("Hours must be positive")
-        if self.priority < 1 or self.priority > 5:
-            raise ValueError("Priority must be between 1 and 5")
         if self.recurrence is not None:
             self.recurrence.check()
 
@@ -125,7 +121,14 @@ class Task:
         occurrences = []
         for day in dates:
             due = datetime.combine(day, self.due_time)
-            occurrences.append(Occurrence(self.name, self.kind, due, self.hours, self.priority))
+            occurrences.append(
+                Occurrence(
+                    self.name,
+                    self.kind,
+                    due,
+                    self.hours,
+                )
+            )
         return occurrences
 
 
@@ -194,7 +197,7 @@ def parse_time(text):
 
 
 def parse_options(fields, allowed=ALLOWED_KEYS):
-    """Convert ['hours=6', 'priority=3'] to {'hours': '6', 'priority': '3'}.
+    """Convert ['hours=6'] to {'hours': '6'}.
 
     Raises ValueError for a field without '=', a key not in allowed, or a repeated key.
     """
@@ -234,13 +237,6 @@ def parse_task(line):
     except ValueError:
         raise ValueError(f"hours must be a number, got '{options['hours']}'")
 
-    priority = 3
-    if "priority" in options:
-        try:
-            priority = int(options["priority"])
-        except ValueError:
-            raise ValueError(f"priority must be a whole number, got '{options['priority']}'")
-
     on_date = None
     if "on" in options:
         on_date = parse_date(options["on"])
@@ -262,7 +258,7 @@ def parse_task(line):
     elif "from" in options or "to" in options or "except" in options:
         raise ValueError("from, to and except can only be used together with every=...")
 
-    task = Task(kind, name, due_time, hours, priority, on_date, recurrence)
+    task = Task(kind, name, due_time, hours, on_date, recurrence)
     task.check()
     return task
 

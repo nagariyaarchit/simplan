@@ -25,7 +25,6 @@ def blocks_to_events(blocks, occurrences):
             occ = occurrences[block.occurrence_index]
             event["extendedProps"] = {
                 "due": occ.due.isoformat(),
-                "priority": occ.priority,
                 "kind": occ.kind.value,
             }
 

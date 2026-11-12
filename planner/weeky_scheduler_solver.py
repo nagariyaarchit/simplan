@@ -1,7 +1,6 @@
 """Turns deadlines into a study plan in two steps.
 
     1. solve()         a linear program (PuLP) decides how many hours on which day
-    2. place_blocks()  puts those hours at real times of day, around busy events
 """
 
 from dataclasses import dataclass
@@ -16,7 +15,7 @@ DAY_START = time(9, 0)
 DAY_END = time(22, 0)
 
 # Smallest block worth putting on a calendar, and the rounding for block lengths.
-MIN_BLOCK = timedelta(minutes=30)
+MIN_BLOCK = timedelta(minutes=15)
 STEP_MINUTES = 15
 
 # Tiny cost per day of waiting, so that among equally good plans the earliest wins.
@@ -83,19 +82,33 @@ def solve(occurrences, hours_available, days_ahead=14, busy=None):
                 by_occurrence[k].append(var)
                 by_day.setdefault(day, []).append(var)
 
-    # STEP 2: Objective function.
-    shortfall_cost = pulp.lpSum(
-        occ.priority * short[k]
-        for k, occ in enumerate(occurrences)
+    # Prefer completing work with earlier deadlines.
+    # Later deadlines receive smaller weights.
+    deadline_order = sorted(
+        range(len(occurrences)),
+        key=lambda k: occurrences[k].due,
     )
 
+    deadline_weights = {}
+
+    for rank, k in enumerate(deadline_order):
+        deadline_weights[k] = 1.0 / (rank + 1)
+
+    shortfall_cost = pulp.lpSum(
+        deadline_weights[k] * short[k]
+        for k in range(len(occurrences))
+    )
+
+    # Prefer earlier study days when shortfall is unchanged.
     lateness_cost = pulp.lpSum(
         (day - first_day).days * var
         for (k, day), var in x.items()
     )
 
-    problem += shortfall_cost + TIE_BREAK * lateness_cost
-
+    problem += (
+        shortfall_cost
+        + TIE_BREAK * lateness_cost
+    )
     # STEP 3: Required hours for each occurrence.
     for k, occ in enumerate(occurrences):
         problem += (
@@ -119,15 +132,18 @@ def solve(occurrences, hours_available, days_ahead=14, busy=None):
         })
 
         for deadline in deadlines:
-            available_before = sum(
-                max(
-                    0,
-                    (
-                        min(slot_end, deadline) - slot_start
-                    ).total_seconds() / 3600
+            available_before = min(
+                hours_available[day],
+                sum(
+                    max(
+                        0,
+                        (
+                            min(slot_end, deadline) - slot_start
+                        ).total_seconds() / 3600
+                    )
+                    for slot_start, slot_end in free_slots(day, busy)
+                    if slot_start < deadline
                 )
-                for slot_start, slot_end in free_slots(day, busy)
-                if slot_start < deadline
             )
 
             variables = [
@@ -220,69 +236,3 @@ def cap_by_busy(hours_available, busy, day_start=DAY_START, day_end=DAY_END):
 def get_start(block):
     """Return a Block's start time (used as the sort key)."""
     return block.start
-
-
-def place_blocks(plan, occurrences, busy, day_start=DAY_START, day_end=DAY_END):
-    """Turn the plan into study blocks at real times, avoiding busy events and each other.
-
-    Each day, the Occurrence due first gets the earliest free time. If a busy event
-    is in the way, the work moves to the next free stretch, splitting if needed.
-    Hours are rounded to STEP_MINUTES, gaps shorter than MIN_BLOCK are skipped, and
-    work on an Occurrence never runs past its due time.
-
-    plan: the dict returned by solve(). busy: list of (start, end) datetimes.
-
-    Returns (blocks, unplaced):
-        blocks: list of Block, earliest first
-        unplaced: list of (date, occurrence index, hours) that found no room
-    """
-    blocks = []
-    unplaced = []
-
-    for day in sorted({day for day, k in plan}):
-        items = [(occurrences[k].due, k) for (d, k) in plan if d == day]
-        items.sort()  # earliest due date first
-
-        slots = free_slots(day, busy, day_start, day_end)
-        for due, k in items:
-            minutes = round(plan[(day, k)] * 60 / STEP_MINUTES) * STEP_MINUTES
-            need = timedelta(minutes=minutes)
-
-            remaining_slots = []
-            for slot_start, slot_end in slots:
-                usable = min(slot_end, due) - slot_start
-                if need > timedelta(0) and usable >= MIN_BLOCK and need >= MIN_BLOCK:
-                    take_minutes = min(
-                        int(need.total_seconds() // 60),
-                        int(usable.total_seconds() // 60)
-                    )
-
-                    take_minutes = (
-                        take_minutes // STEP_MINUTES
-                    ) * STEP_MINUTES
-
-                    take = timedelta(minutes=take_minutes)
-
-                    if take < MIN_BLOCK:
-                        remaining_slots.append((slot_start, slot_end))
-                        continue
-                    
-                    blocks.append(
-                        Block(
-                            occurrences[k].name,
-                            slot_start,
-                            slot_start + take,
-                            occurrence_index=k
-                        )
-                    )
-                    need -= take
-                    slot_start = slot_start + take
-                if slot_end > slot_start:
-                    remaining_slots.append((slot_start, slot_end))
-            slots = remaining_slots
-
-            if need > timedelta(0):
-                unplaced.append((day, k, need.total_seconds() / 3600))
-
-    blocks.sort(key=get_start)
-    return blocks, unplaced

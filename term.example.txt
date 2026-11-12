@@ -1,13 +1,13 @@
 
-# SimPlan real-world test: November 9-13, 2026
+# SimPlan real-world test: November 16-20, 2026
 
-# Quizzes - highest priority
-quiz, MATH 237 Quiz, 10:00, hours=3, priority=5, on=2026-11-10
-quiz, STAT 230 Quiz, 12:00, hours=6, priority=5, on=2026-11-13
+# Quizzes
+quiz, MATH 237 Quiz, 10:00, hours=3, on=2026-11-17
+quiz, STAT 230 Quiz, 12:00, hours=6, on=2026-11-20
 
 # Catch-up work
-assignment, CS 234 Catch-up, 23:59, hours=4, priority=4, on=2026-11-13
-assignment, CO 250 Catch-up, 23:59, hours=4, priority=3, on=2026-11-13
+assignment, CS 234 Catch-up, 23:59, hours=4, on=2026-11-20
+assignment, CO 250 Catch-up, 23:59, hours=4, on=2026-11-20
 
 # Maximum study hours per day
 free, days=mon|tue|wed|thu|fri, hours=4
