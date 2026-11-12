@@ -9,7 +9,8 @@ import sys
 from datetime import date
 
 from planner.parser import load_term
-from planner.solver import cap_by_busy, last_study_day, place_blocks, solve
+from planner.weeky_scheduler_solver import cap_by_busy, last_study_day, place_blocks, solve
+from planner.day_scheduler_solver import schedule_week
 import asyncio
 from datetime import date, datetime, time, timedelta
 from planner.gcal import (
@@ -130,19 +131,21 @@ async def main():
             busy=busy
         )
 
-        # 8. Place study sessions around busy events.
-        blocks, unplaced = place_blocks(
+        result = schedule_week(
             plan,
             occurrences,
-            busy
+            hours_available,
+            busy,
+            google_events=google_events,
         )
+        blocks = result.blocks
 
-        print_plan(
-            blocks,
-            occurrences,
-            shortfall,
-            unplaced
-        )
+        print_plan(blocks, occurrences, shortfall, [])
+        for k, hours in result.missed.items():
+            print(f"MISSED DEADLINE: {occurrences[k].name}: {hours:.2f}h allocated but unscheduled")
+        for k, hours in result.pending.items():
+            print(f"PENDING AFTER PLANNING WINDOW: {occurrences[k].name}: {hours:.2f}h")
+
         # 9. Open the generated schedule in a read-only browser preview.
         if blocks:
             show_preview(blocks, occurrences, google_events)

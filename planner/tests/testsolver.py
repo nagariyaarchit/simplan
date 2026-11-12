@@ -22,7 +22,7 @@ else:
     sys.exit(f"Could not find planner/parser.py in any folder above {here}")
 
 from planner.parser import Kind, Occurrence, load_term  # noqa: E402
-from planner.solver import (  # noqa: E402
+from planner.weeky_scheduler_solver import (  # noqa: E402
     Block,
     cap_by_busy,
     free_slots,

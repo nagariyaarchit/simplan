@@ -11,7 +11,7 @@ import traceback
 from datetime import date, datetime, time
 from pathlib import Path
 
-# Find the project folder (the one containing panner/parser.py) so the import
+# Find the project folder (the one containing planner/parser.py) so the import
 # below works no matter which folder this is run from.
 here = Path(__file__).resolve().parent
 for folder in [here] + list(here.parents):
