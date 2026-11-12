@@ -1,368 +1,237 @@
 # SimPlan
 
-**An optimization-based study planner that turns academic deadlines into structured study schedules.**
+**SimPlan** is a Python-based academic study planner that turns course deadlines and available study hours into a proposed weekly study schedule.
 
-SimPlan is a Python application that uses linear programming to allocate study hours across upcoming deadlines, accounts for existing Google Calendar commitments, and generates study sessions at specific times of day.
+It combines linear programming, deadline-aware scheduling heuristics, and Google Calendar integration to help students plan study sessions around existing commitments.
 
-Instead of manually deciding when and how long to study for each assignment, quiz, or exam, SimPlan uses task priorities, deadlines, daily availability, and calendar conflicts to produce a feasible study schedule.
-
-Generated study sessions can be reviewed in a **read-only browser calendar preview** before any future calendar synchronization.
+**Project status: MVP in active development.** SimPlan can generate schedules, but its scheduling algorithm is not yet globally optimal and can leave work unscheduled even when rearranging sessions might make room.
 
 ## Features
 
-### 1. Deadline and Task Management
+### Currently implemented
 
-Define academic tasks using a simple text file.
+- Parse quizzes, assignments, and other academic tasks from a text-based term file.
+- Support dated and recurring task definitions.
+- Read daily study-hour availability.
+- Retrieve existing commitments from Google Calendar.
+- Allocate study hours across days using PuLP.
+- Schedule real-time study blocks around calendar events.
+- Use deadline-aware heuristics when choosing which task to study.
+- Carry unfinished allocated work forward and pull future allocations earlier when permitted.
+- Limit continuous study to 90 minutes, with a minimum 15-minute break afterward.
+- Support study sessions as short as 15 minutes.
+- Attempt to reserve 15-minute travel buffers around recognized lecture events.
+- Report unscheduled and pending work.
+- Display a read-only weekly calendar preview.
 
-Supported task types include:
+### Known limitations
 
-- Assignments
-- Quizzes
-- Midterms
-- Final exams
+- **No global scheduling guarantee:** the daily scheduler uses a greedy heuristic and cannot yet rearrange previously placed sessions to rescue approaching deadlines.
+- **Imperfect lookahead:** future-capacity estimates are approximate and may not account fully for breaks, fragmentation, or competing tasks.
+- **Lecture detection:** travel buffers depend on recognizing class events from Google Calendar titles. Some lectures may not be detected.
+- **Missing calendar events:** SimPlan does not yet warn when an assessment is absent from Google Calendar. A task deadline alone does not reserve time for the assessment itself.
+- **15-minute granularity:** allocations are rounded to scheduling increments, which may produce small unscheduled remainders.
+- **Limited explanations:** the program reports shortfalls but does not always explain why they occurred.
+- **Read-only preview:** generated study blocks cannot yet be edited or published directly through the preview.
+- **No automatic rescheduling:** the user must rerun the planner when circumstances change.
 
-Each task can specify its deadline, estimated required study hours, priority (1–5), and optional recurrence rules.
-
-SimPlan supports both one-time deadlines and recurring weekly tasks, including excluded dates.
-
-### 2. Linear Programming Optimization
-
-SimPlan uses **PuLP** to formulate and solve a linear programming problem.
-
-The optimization model:
-
-- Allocates study hours across available days.
-- Prioritizes completing higher-priority tasks.
-- Respects task deadlines and daily study capacity.
-- Accounts for the time available before deadlines occurring during a day.
-- Tracks unmet study hours when available capacity is insufficient.
-- Uses a small tie-breaking penalty to prefer earlier study allocations.
-
-The objective minimizes priority-weighted unmet study hours, with a secondary preference for earlier scheduling.
-
-### 3. Time-Based Study Block Scheduling
-
-After optimization, SimPlan converts daily hour allocations into actual study sessions.
-
-The scheduling algorithm:
-
-- Places sessions between **9:00 AM and 10:00 PM**.
-- Avoids conflicts with existing Google Calendar events.
-- Prioritizes tasks with earlier deadlines when placing blocks.
-- Splits sessions across available time slots when necessary.
-- Uses 15-minute scheduling increments.
-- Skips study blocks shorter than 30 minutes.
-- Prevents sessions from extending beyond their corresponding deadlines.
-- Reports allocated hours that could not be placed.
-
-This separates the optimization problem from the practical placement of study sessions.
-
-### 4. Google Calendar Integration
-
-SimPlan integrates with the Google Calendar API using OAuth 2.0.
-
-Current functionality includes:
-
-- Authenticating with Google Calendar.
-- Reading existing events from the primary calendar.
-- Retrieving events across the planning window, including paginated results.
-- Converting calendar events into busy intervals.
-- Excluding cancelled and transparent events.
-- Reducing available study capacity based on existing commitments.
-- Supporting asynchronous calendar retrieval.
-
-**Current permission scope:** `calendar.readonly`
-
-SimPlan currently reads calendar data without modifying existing events.
-
-### 5. Read-Only Calendar Preview
-
-SimPlan provides a browser-based preview of generated study sessions using FullCalendar.
-
-The preview supports:
-
-- Weekly, daily, and monthly calendar views.
-- Displaying scheduled study sessions with start and end times.
-- Viewing session details, including task type, priority, and deadline.
-- Navigating between dates.
-- Preventing event dragging, resizing, and editing.
-
-The preview is generated locally from the solver's output and does not create Google Calendar events.
-
-## Architecture
-
-SimPlan follows a modular pipeline:
-
-```text
-                  Term Configuration
-                          |
-                          v
-                    parser.py
-                          |
-                          v
-                    Task Occurrences
-                          |
-                          v
-Google Calendar ---> gcal.py
-                          |
-                          v
-                  Busy Time Intervals
-                          |
-                          v
-                     solver.py
-                  Linear Programming
-                          |
-                          v
-                  Daily Hour Allocation
-                          |
-                          v
-                     solver.py
-                    Block Placement
-                          |
-                          v
-                 Scheduled Study Blocks
-                          |
-                +---------+---------+
-                |                   |
-                v                   v
-           CLI Output           preview.py
-                                    |
-                                    v
-                              preview.html
-                                    |
-                                    v
-                          Read-Only Calendar
-```
-
-### Project Structure
+## Project structure
 
 ```text
 simplan/
 ├── README.md
+├── credentials.json
 ├── planner/
 │   ├── cli.py
-│   ├── gcal.py
 │   ├── parser.py
+│   ├── gcal.py
+│   ├── weeky_scheduler_solver.py
+│   ├── day_scheduler_solver.py
 │   ├── preview.py
-│   ├── solver.py
 │   └── tests/
-│       ├── testparser.py
-│       └── testsolver.py
-├── web/
-│   └── preview.html
-└── term.example.txt
+├── term.example.txt
+├── token.json
+└── web/
+    └── preview.html
 ```
 
-Local OAuth files, such as `credentials.json` and `token.json`, are intentionally omitted from the project structure above because they should not be committed to version control.
+### Main components
 
-## Technologies
-
-| Technology | Purpose |
+| Module | Responsibility |
 |---|---|
-| Python | Application logic and scheduling |
-| PuLP | Linear programming optimization |
-| Google Calendar API | Reading existing calendar commitments |
-| Google OAuth 2.0 | Calendar authentication |
-| asyncio | Non-blocking calendar retrieval |
-| FullCalendar | Interactive read-only calendar preview |
-| HTML, CSS, JavaScript | Browser interface |
+| `parser.py` | Parses tasks, deadlines, recurrence rules, and availability |
+| `gcal.py` | Retrieves Google Calendar events and busy intervals |
+| `weeky_scheduler_solver.py` | Uses PuLP to allocate study hours across days |
+| `day_scheduler_solver.py` | Places study sessions at actual times with scheduling constraints |
+| `cli.py` | Coordinates parsing, calendar retrieval, optimization, and output |
+| `preview.py` | Converts proposed sessions into calendar preview data |
+| `web/preview.html` | Displays the read-only calendar interface |
 
-## Getting Started
+The filename `weeky_scheduler_solver.py` is retained for compatibility with the current codebase.
 
-### Prerequisites
+## How scheduling works
 
-- Python 3.10 or newer
-- Google account
-- Google Calendar API enabled in a Google Cloud project
-- OAuth client credentials for a desktop application
+SimPlan uses two scheduling stages.
 
-### Installation
+### Solver 1: Weekly allocation
 
-Clone the repository:
+The weekly solver uses PuLP to decide how much study time should be allocated to each task on each day.
 
-```bash
-git clone https://github.com/nagariyaarchit/simplan.git
-cd simplan
-```
+It considers:
 
-Install the Python dependencies:
+- Task deadlines
+- Required study hours
+- Daily study-hour limits
+- Calendar-based availability estimates
+- Study eligibility windows
 
-```bash
-python3 -m pip install \
-  pulp \
-  google-api-python-client \
-  google-auth-httplib2 \
-  google-auth-oauthlib
-```
+The solver also calculates any workload it cannot allocate.
 
-### Google Calendar Setup
+Its current shortfall objective uses deadline-based weighting rather than user-entered priorities.
 
-1. Create or select a project in Google Cloud Console.
-2. Enable the Google Calendar API.
-3. Configure the OAuth consent screen.
-4. Create OAuth credentials for a desktop application.
-5. Download the credentials JSON file.
-6. Save it as `credentials.json` in the project root.
+### Solver 2: Daily session placement
 
-When SimPlan first accesses Google Calendar, the OAuth flow opens in your browser.
+The daily scheduler turns those allocations into actual calendar blocks.
 
-After authorization, the application stores the token locally for subsequent requests.
+It considers:
 
-The application currently requests read-only calendar access.
+- Existing Google Calendar commitments
+- Remaining task workload
+- Upcoming deadlines
+- Available study windows
+- Continuous-study and rest constraints
+- Lecture travel buffers, when recognized
 
-**Security:** Never commit `credentials.json` or `token.json` to Git.
+The scheduler recalculates task urgency using estimated capacity before upcoming deadlines.
 
-### Configure Study Requirements
+It can carry unfinished work to later days and pull future allocations forward, but it does not yet perform a full rearrangement of previously scheduled sessions.
 
-Create a term configuration file containing academic deadlines and study availability.
+**Important:** the two-stage approach reduces optimization complexity, but does not guarantee a globally optimal schedule.
+
+## Task input format
+
+SimPlan reads a text file describing study requirements.
 
 Example:
 
 ```text
-# One-time deadlines
-assignment, CO 250 Assignment, 23:59, hours=6, priority=4, on=2027-01-15
-midterm, MATH 237 Midterm, 14:00, hours=12, priority=5, on=2027-01-22
+# Academic tasks
+quiz, MATH 237 Quiz, 10:00, hours=3, on=2026-11-17
+quiz, STAT 230 Quiz, 12:00, hours=6, on=2026-11-20
 
-# Recurring deadlines
-quiz, STAT 230 Quiz, 17:00, hours=3, priority=3, every=mon, from=2027-01-11, to=2027-04-05
+assignment, CS 234 Catch-up, 23:59, hours=4, on=2026-11-20
+assignment, CO 250 Catch-up, 23:59, hours=4, on=2026-11-20
 
-# Weekly availability
-free, days=mon|tue|wed|thu|fri, hours=3
+# Daily study availability
+free, days=mon|tue|wed|thu|fri, hours=4
 free, days=sat|sun, hours=5
-
-# Date-specific overrides
-free, on=2027-01-18, hours=0
 ```
 
-The `hours` field represents estimated study effort for tasks and available study capacity for `free` entries.
+The `hours` value specifies the estimated study time required for a task.
+
+The `free` entries specify maximum daily study hours, excluding breaks.
+
+### Task priorities
+
+Users no longer enter a `priority` field.
+
+SimPlan calculates scheduling urgency dynamically from task deadlines, remaining workload, and estimated available capacity.
+
+**Do not include `priority=` in new task definitions.**
+
+## Getting started
+
+### Requirements
+
+- Python 3.13 (the version currently used during development)
+- PuLP
+- Google Calendar API dependencies configured for the project
+- Google Calendar OAuth credentials
+
+Install the project's Python dependencies according to its environment setup. A reproducible dependency manifest is still to be finalized.
+
+### Google Calendar setup
+
+SimPlan expects Google Calendar authentication to be configured through the project's existing `gcal.py` integration.
+
+OAuth credentials and tokens are local secrets. Do not commit `credentials.json` or `token.json` to a public repository.
 
 ### Run SimPlan
 
-Run using the default configuration:
+From the project root:
 
 ```bash
 python3 -m planner.cli
 ```
 
-Or specify a configuration file and planning start date:
+To use a specific term file and planning start date:
 
 ```bash
-python3 -m planner.cli term.example.txt 2027-01-11
+python3 -m planner.cli term.example.txt 2026-11-16
 ```
 
-SimPlan generates a seven-day study plan, prints the scheduled study blocks in the terminal, and opens the read-only calendar preview in your browser.
+SimPlan fetches calendar commitments, calculates a study plan, prints a scheduling summary, and opens the browser preview when study blocks are generated.
 
-The browser preview loads FullCalendar from a CDN, so an internet connection is required.
+## Scheduling rules
 
-## How the Optimization Works
+Current default settings:
 
-SimPlan separates planning into two stages.
+| Rule | Value |
+|---|---|
+| Planning window | 7 days |
+| Study day | 9:00 AM–10:00 PM |
+| Minimum session | 15 minutes |
+| Scheduling increment | 15 minutes |
+| Maximum continuous study | 90 minutes |
+| Minimum break after continuous-study limit | 15 minutes |
+| Lecture travel buffer | 15 minutes before and after recognized lectures |
+| Daily study limit | User-configured |
 
-### Stage 1: Study Hour Allocation
+The daily study-hour limit counts actual study time, not breaks.
 
-The linear programming model determines how many hours to allocate to each task on each day.
+Sessions must finish before their corresponding task deadlines.
 
-Let:
+## Development roadmap
 
-- \(x_{k,d}\) represent hours allocated to task occurrence \(k\) on day \(d\).
-- \(s_k\) represent unmet hours for task occurrence \(k\).
-- \(p_k\) represent the priority of task occurrence \(k\).
-- \(h_k\) represent required study hours.
-- \(a_d\) represent available study hours on day \(d\).
+### Next development session
 
-The objective is:
+1. Implement limited rearrangement of previously scheduled sessions to reduce avoidable deadline misses.
+2. Investigate and improve lecture travel-buffer detection.
+3. Warn when quizzes, midterms, or finals appear to be missing from Google Calendar.
+4. Revisit the weekly solver's shortfall objective.
+5. Audit scheduling granularity and workload accounting.
 
-\[
-\min \sum_k p_k s_k +
-\epsilon \sum_{k,d} (d-d_0)x_{k,d}
-\]
+### Planned improvements
 
-where \(\epsilon = 0.001\) is a small tie-breaking coefficient.
+- Configurable pre-assessment review sessions
+- Recurring deadline-free activities
+- Rescheduling after missed study sessions
+- Google Calendar publishing after user approval
+- Interactive schedule adjustments
+- More informative scheduling-conflict reports
+- Temporary crunch-mode scheduling preferences
 
-Subject to:
+### Longer-term ideas
 
-**Required study hours**
+- Better task-duration estimates based on completed work
+- More advanced limited-lookahead optimization
+- User-defined session preferences
+- Workload analytics and planning history
 
-\[
-\sum_d x_{k,d}+s_k=h_k
-\]
+## Development philosophy
 
-**Daily capacity**
+SimPlan aims to produce realistic study schedules rather than simply filling every available hour.
 
-\[
-\sum_k x_{k,d}\leq a_d
-\]
+The long-term goal is to balance:
 
-**Non-negativity**
+1. Completing work before deadlines
+2. Respecting existing calendar commitments
+3. Preserving realistic study and rest periods
+4. Minimizing unnecessary schedule changes
+5. Explaining when all requirements cannot be satisfied
 
-\[
-x_{k,d}\geq0,\qquad s_k\geq0
-\]
+The current implementation is experimental and should be reviewed before relying on it for important academic deadlines.
 
-Decision variables are created only for eligible dates within the planning horizon and no later than the task deadline.
+## License
 
-Additional constraints limit allocations to the time available before deadlines occurring within a particular day.
-
-### Stage 2: Study Block Placement
-
-The second stage converts optimized daily allocations into concrete time intervals.
-
-It identifies available time slots, removes calendar conflicts, and places study sessions in earliest-deadline-first order.
-
-If the requested hours cannot be fully placed, the remaining hours are reported separately.
-
-## Current Limitations
-
-- Planning uses a seven-day execution window.
-- Study sessions are placed using a deterministic placement algorithm rather than a second optimization model.
-- Study blocks are placed within a fixed daily time window.
-- The browser preview is read-only.
-- Calendar event creation is not yet implemented.
-- Some allocated hours may remain unplaced due to block rounding or scheduling constraints.
-- Calendar availability is retrieved from the primary Google Calendar.
-
-## Development Roadmap
-
-The following features are planned and are not part of the current implementation.
-
-### Calendar Synchronization
-
-- [ ] Add explicit user approval before calendar synchronization.
-- [ ] Enable Google Calendar event creation.
-- [ ] Prevent duplicate event creation.
-- [ ] Handle partial synchronization failures.
-- [ ] Support safe re-synchronization of previously generated plans.
-
-### Preview and User Experience
-
-- [x] Generate a browser-based calendar preview.
-- [x] Display scheduled study blocks.
-- [x] Support read-only calendar navigation.
-- [ ] Add browser-based approval and cancellation.
-- [ ] Display existing calendar events alongside proposed sessions.
-- [ ] Highlight unscheduled hours and planning conflicts.
-- [ ] Add improved task-based event colours.
-
-### Scheduling Improvements
-
-- [ ] Support configurable daily study windows.
-- [ ] Add optional breaks between study sessions.
-- [ ] Improve scheduling around user preferences.
-- [ ] Explore more flexible block placement strategies.
-
-### Reliability and Testing
-
-- [ ] Add automated preview serialization tests.
-- [ ] Expand scheduling edge-case tests.
-- [ ] Add mocked Google Calendar integration tests.
-- [ ] Add automated validation for overlapping study blocks.
-- [ ] Improve error handling and diagnostics.
-
-## Development Status
-
-SimPlan is under active development.
-
-The current implementation focuses on generating optimized study schedules, accounting for existing calendar commitments, and providing a read-only preview before future Google Calendar synchronization.
-
-Features and implementation details will continue to evolve as development progresses.
-
+A license has not yet been specified.
