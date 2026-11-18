@@ -11,6 +11,7 @@ import asyncio
 from planner.parser import load_term
 from planner.weeky_scheduler_solver import cap_by_busy, last_study_day, solve
 from planner.day_scheduler_solver import schedule_week
+from planner.integrated_scheduler_solver import solve_integrated
 from datetime import date, datetime, time, timedelta
 from planner.gcal import (
     CalendarError,
@@ -129,31 +130,45 @@ async def main():
 
         print(f"\nGoogle Calendar: {len(busy)} busy intervals")
 
-        # 5. Get study availability.
-        hours_available = availability.hours_between(
-            start, end
-        )
+        # # 5. Get study availability.
+        # hours_available = availability.hours_between(
+        #     start, end
+        # )
 
-        # 6. Subtract calendar commitments.
-        hours_available = cap_by_busy(
-            hours_available, busy
-        )
+        # # 6. Subtract calendar commitments.
+        # hours_available = cap_by_busy(
+        #     hours_available, busy
+        # )
+        hours_available = availability.hours_between(start, end)
 
-        # 7. Run optimization.
-        plan, shortfall = solve(
-            occurrences,
-            hours_available,
-            busy=busy
-        )
+        # # 7. Run optimization.
+        # plan, shortfall = solve(
+        #     occurrences,
+        #     hours_available,
+        #     busy=busy
+        # )
 
-        result = schedule_week(
-            plan,
-            occurrences,
-            hours_available,
-            busy,
+        # result = schedule_week(
+        #     plan,
+        #     occurrences,
+        #     hours_available,
+        #     busy,
+        #     google_events=google_events,
+        # )
+        # blocks = result.blocks
+        milp = solve_integrated(
+            occurrences=occurrences,
+            hours_available=hours_available,
+            busy=busy,
             google_events=google_events,
         )
+
+        result = milp.schedule
         blocks = result.blocks
+        shortfall = {}
+
+        print(f"MILP status: {milp.status}")
+        print(f"Proven optimal: {milp.optimal}")
 
         print_plan(blocks, occurrences, {}, [])
 
