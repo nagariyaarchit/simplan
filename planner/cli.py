@@ -13,6 +13,7 @@ from planner.weeky_scheduler_solver import cap_by_busy, last_study_day, solve
 from planner.day_scheduler_solver import schedule_week
 from planner.integrated_scheduler_solver import solve_integrated
 from datetime import date, datetime, time, timedelta
+from planner.assesment_validator import validate_assessments
 from planner.gcal import (
     CalendarError,
     get_events,
@@ -127,6 +128,15 @@ async def main():
         )
 
         busy = events_to_busy(google_events)
+        reservations, warnings = validate_assessments(
+            occurrences,
+            google_events,
+        )
+
+        for warning in warnings:
+            print(f"WARNING: {warning}")
+
+        busy.extend(reservations)
 
         print(f"\nGoogle Calendar: {len(busy)} busy intervals")
 
